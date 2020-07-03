@@ -17,6 +17,8 @@ type TemplateRendererOptions = {
   shouldPreload?: (file: string, type: string) => boolean;
   shouldPrefetch?: (file: string, type: string) => boolean;
   serializer?: Function;
+  inlineScripts?: boolean;
+  files?: { [filename: string]: string; }  // 扩展属性，用来直出js
 };
 
 export type ClientManifest = {
@@ -221,15 +223,39 @@ export default class TemplateRenderer {
   }
 
   renderScripts (context: Object): string {
-    if (this.clientManifest) {
-      const initial = this.preloadFiles.filter(({ file }) => isJS(file))
-      const async = (this.getUsedAsyncFiles(context) || []).filter(({ file }) => isJS(file))
-      const needed = [initial[0]].concat(async, initial.slice(1))
-      return needed.map(({ file }) => {
-        return `<script src="${this.publicPath}${file}" defer></script>`
-      }).join('')
-    } else {
-      return ''
+    if(!this.options.inlineScripts) {
+      if (this.clientManifest) {
+        const initial = this.preloadFiles.filter(({ file }) => isJS(file))
+        const async = (this.getUsedAsyncFiles(context) || []).filter(({ file }) => isJS(file))
+        const needed = [initial[0]].concat(async, initial.slice(1))
+        return needed.map(({ file }) => {
+          return `<script src="${this.publicPath}${file}" defer></script>`
+        }).join('')
+      } else {
+        return ''
+      }
+    }else{
+      // 内联脚本
+      if (this.clientManifest) {
+        const initial = this.preloadFiles.filter(({ file }) => isJS(file))
+        const async = (this.getUsedAsyncFiles(context) || []).filter(({ file }) => isJS(file))
+        const needed = [initial[0]].concat(async, initial.slice(1))
+        return needed.map(({ file }) => {
+          const fileCode = this.options.files[file];
+          // 公共chunk
+          if(file.indexOf('common_chunk') > -1 && fileCode) {
+            return `<script defer>var __common_module__ = { exports: {}}; (function (exports) {${fileCode}}).call(__common_module__.exports, __common_module__.exports);</script>`
+          // 异步chunk
+          }else if(file.indexOf('chunk') > -1) {
+            console.log('todo deal async chunk');
+            return '';
+          }else{
+            return `<script defer>(function (exports, require, module) {${fileCode}})({}, null, {});</script>`
+          }
+        }).join('')
+      } else {
+        return ''
+      }
     }
   }
 
